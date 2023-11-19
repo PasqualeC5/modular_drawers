@@ -1,0 +1,8 @@
+#line 1 "C:\\Users\\Pasquale\\Desktop\\arduino_projects\\modular_drawers\\.vscode\\settings.json"
+{
+    "files.associations": {
+        "*.embeddedhtml": "html",
+        "new": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "enabled"
+}
