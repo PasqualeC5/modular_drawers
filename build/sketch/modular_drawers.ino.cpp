@@ -325,4 +325,41 @@ void discover_address() {
 
         if (receivedPacket.header == DISCOVERY_HEADER) {
             address = receivedPacket.data[0];
-            address_status =
+            address_status = ASSIGNED;
+
+            // Send confirmation to the sender
+            discoveryPacket.data[0] = address;
+            send_packet(discoveryPacket);
+        } else {
+            // Forward the packet to the next node
+            send_packet(receivedPacket);
+        }
+    }
+}
+
+void handle_communication() {
+    // Your existing code for handling communication
+}
+
+void send_packet(Packet packet) {
+    Serial.write(packet.header);
+    Serial.write(packet.senderAddress);
+    Serial.write(packet.receiverAddress);
+    Serial.write(packet.dataSize);
+
+    for (byte i = 0; i < packet.dataSize; ++i) {
+        Serial.write(packet.data[i]);
+    }
+}
+
+void receive_packet() {
+    receivedPacket.header = Serial.read();
+    receivedPacket.senderAddress = Serial.read();
+    receivedPacket.receiverAddress = Serial.read();
+    receivedPacket.dataSize = Serial.read();
+
+    for (byte i = 0; i < receivedPacket.dataSize; ++i) {
+        receivedPacket.data[i] = Serial.read();
+    }
+}
+
