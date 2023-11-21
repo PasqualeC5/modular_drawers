@@ -1,5 +1,0 @@
-{
-    "sketch": "modular_drawers.ino",
-    "output": "build",
-    "board": "arduino:avr:uno"
-}

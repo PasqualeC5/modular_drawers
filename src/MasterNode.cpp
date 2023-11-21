@@ -1,4 +1,3 @@
-#line 1 "C:\\Users\\c5pas\\Documents\\Arduino\\libraries\\Node\\drawer_master\\MasterNode.cpp"
 #include "MasterNode.hpp"
 
 MasterNode::MasterNode() : Node()

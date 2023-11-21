@@ -1,12 +1,16 @@
-#line 1 "C:\\Users\\Pasquale\\Desktop\\arduino_projects\\modular_drawers\\Node.hpp"
+#line 1 "C:\\Users\\c5pas\\Documents\\Arduino\\libraries\\Node\\drawer_master\\Node.hpp"
 #ifndef NODE_HPP
 #define NODE_HPP
 #include "Arduino.h"
 #include "eeprom.h"
 
+
+#define BAUD_RATE 9600
+
 class Node
 {
 protected:
+
     static const byte BROADCAST_ADDRESS PROGMEM = B11111111;
 
     static const byte MASTER_ADDRESS PROGMEM = B11111110;
@@ -17,7 +21,7 @@ protected:
 
     static const byte UID_ADDRESS PROGMEM = B00000001;
 
-    static const uint16_t UID_LENGTH PROGMEM = 8;
+    static const uint16_t UID_LENGTH PROGMEM = 4;
 
     static const char START_DELIMITER PROGMEM = '@';
 
@@ -30,8 +34,6 @@ protected:
     static const char HELLO_HEADER PROGMEM = 'H';
 
     static const char OPERATION_HEADER PROGMEM = 'O';
-
-    static const char CONNECTION_HEADER PROGMEM = 'C';
 
     static const char ERROR_HEADER PROGMEM = 'E';
 
@@ -47,11 +49,11 @@ protected:
 
     static const byte OPEN PROGMEM = 1;
 
+    static const byte OFFLINE PROGMEM = 0;
+
     static const byte CONNECTED PROGMEM = 1;
 
     static const byte DISCOVERING PROGMEM = 2;
-
-    static const byte CONNECTING PROGMEM = 3;
 
     struct Packet
     {
@@ -78,13 +80,26 @@ protected:
     void discoverNetwork();
     int sendPacket(Packet &packet);
     int processPacket(Packet &packet);
-    int handleDiscovery(Packet &packet);
-    virtual int handleConnection(Packet &packet);
-    int handleStatus(Packet &packet);
-    int handleHello(Packet &packet);
-    int handleOperation(Packet &packet);
+    virtual int handleDiscovery(Packet &packet);
+    virtual int handleStatus(Packet &packet);
+    virtual int handleHello(Packet &packet);
+    virtual int handleOperation(Packet &packet);
+    String generateUID()
+    {
+        /* Change to allowable characters */
+        const char possible[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        static char uid[UID_LENGTH + 1];
+        for (int p = 0, i = 0; i < UID_LENGTH; i++)
+        {
+            int r = random(0, strlen(possible));
+            uid[p++] = possible[r];
+        }
+        uid[UID_LENGTH] = '\0';
+        return String(uid);
+    }
 
 public:
+
     Node();
     int receivePacket();
 };

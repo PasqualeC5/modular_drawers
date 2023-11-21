@@ -1,11 +1,11 @@
 {
-  "additionalFiles": "..\\..\\..,..\\..\\..,..\\..\\..,..\\..,..\\..,..\\..,..\\..",
+  "additionalFiles": "..\\..,..\\..,..\\..,..\\..",
   "builtInToolsFolders": "",
-  "compiler.optimization_flags": "",
+  "compiler.optimization_flags": "-Os",
   "customBuildProperties": "",
-  "fqbn": "arduino:avr:uno",
-  "hardwareFolders": "C:\\Users\\Pasquale\\AppData\\Local\\Arduino15\\packages",
-  "otherLibrariesFolders": "G:\\Documents\\Arduino\\libraries",
+  "fqbn": "esp32:esp32:uPesy_wrover:PartitionScheme=default,CPUFreq=240,UploadSpeed=921600,FlashMode=qio,FlashFreq=80,PSRAM=enabled,DebugLevel=none,EraseFlash=none",
+  "hardwareFolders": "C:\\Users\\c5pas\\AppData\\Local\\Arduino15\\packages",
+  "otherLibrariesFolders": "C:\\Users\\c5pas\\Documents\\Arduino\\libraries",
   "runtime.ide.version": "10607",
-  "sketchLocation": "C:\\Users\\Pasquale\\Desktop\\arduino_projects\\modular_drawers"
+  "sketchLocation": "C:\\Users\\c5pas\\Documents\\Arduino\\libraries\\Node\\drawer_master"
 }

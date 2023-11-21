@@ -4,15 +4,15 @@
 
 Node::Node()
 {
-    address = DEFAULT_ADDRESS;
+
     if (EEPROM[UID_ISSET_ADDRESS] == B00000001)
     {
-        uid = read_string_from_eeprom(UID_ADDRESS);
+        address = EEPROM[UID_ADDRESS];
         uidSet = true;
     }
     else
     {
-        uid = String("");
+        address = DEFAULT_ADDRESS;
         uidSet = false;
     }
     discoverNetwork();
@@ -21,9 +21,8 @@ Node::Node()
 void Node::discoverNetwork()
 {
     status = DISCOVERING;
-    String data(address);
-    data = String(data + uidSet);
-    Packet packet(address, BROADCAST_ADDRESS, DISCOVERY_HEADER, data);
+    uid = generateUID();
+    Packet packet(address, BROADCAST_ADDRESS, DISCOVERY_HEADER, uid);
     sendPacket(packet);
 }
 
@@ -78,37 +77,17 @@ int Node::processPacket(Packet &packet)
 
 int Node::handleDiscovery(Packet &packet)
 {
-    if (packet.sourceAddress != address)
+    if (packet.data != uid)
     {
-        packet.data[0]++;
         return sendPacket(packet);
     }
     address = packet.data[0];
-    status = CONNECTING;
 
-    packet.sourceAddress = address;
-    packet.destinationAddress = MASTER_ADDRESS;
-    packet.operationHeader = CONNECTION_HEADER;
-    packet.data[0] = address;
-    packet.data = String(packet.data + REQUEST + uid);
-
-    return sendPacket(packet);
-}
-
-int Node::handleConnection(Packet &packet)
-{
-    char message = packet.data[0];
-    if (message == ACCEPTED)
-    {
-        uid = String(packet.data.substring(1));
-        EEPROM[UID_ISSET_ADDRESS] = B00000001;
-        write_string_to_eeprom(UID_ADDRESS, uid);
-        status = CONNECTED;
-        return status;
-    }
-
-    discoverNetwork();
-    return -1;
+    EEPROM[UID_ISSET_ADDRESS] = B00000001;
+    EEPROM[UID_ADDRESS] = address;
+    uidSet = true;
+    status = CONNECTED;
+    return status;
 }
 
 int Node::handleStatus(Packet &packet)
@@ -121,7 +100,12 @@ int Node::handleStatus(Packet &packet)
 int Node::handleHello(Packet &packet)
 {
     if (packet.sourceAddress == address)
+    {
+        Serial.println("--------------------------------");
+        Serial.println(packet.data);
+        Serial.println("--------------------------------");
         return 0;
+    }
     int len = packet.data.length();
     packet.data = String(packet.data + "Hello from node: " + address + "\n");
     return packet.data.length() - len;

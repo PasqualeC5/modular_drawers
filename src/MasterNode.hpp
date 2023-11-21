@@ -1,4 +1,3 @@
-#line 1 "C:\\Users\\c5pas\\Documents\\Arduino\\libraries\\Node\\drawer_master\\MasterNode.hpp"
 #ifndef MASTER_NODE_HPP
 #define MASTER_NODE_HPP
 

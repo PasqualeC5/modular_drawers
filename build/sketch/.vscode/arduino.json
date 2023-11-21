@@ -1,6 +1,0 @@
-#line 1 "C:\\Users\\Pasquale\\Desktop\\arduino_projects\\modular_drawers\\.vscode\\arduino.json"
-{
-    "sketch": "modular_drawers.ino",
-    "output": "build",
-    "board": "arduino:avr:uno"
-}
