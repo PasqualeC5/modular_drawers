@@ -1,20 +1,18 @@
 #ifndef NODE_HPP
 #define NODE_HPP
-#include "Arduino.h"
-#include "eeprom.h"
-
+#include <Arduino.h>
+#include <EEPROM.h>
 
 #define BAUD_RATE 9600
 
 class Node
 {
 protected:
-
     static const byte BROADCAST_ADDRESS PROGMEM = B11111111;
 
     static const byte MASTER_ADDRESS PROGMEM = B11111110;
 
-    static const byte DEFAULT_ADDRESS PROGMEM = B0000000;
+    static const byte DEFAULT_ADDRESS PROGMEM = B11111101;
 
     static const byte UID_ISSET_ADDRESS PROGMEM = B00000000;
 
@@ -59,7 +57,7 @@ protected:
         char startDelimiter = START_DELIMITER; // Start of Packet
         byte sourceAddress;
         byte destinationAddress;
-        byte operationHeader;
+        char operationHeader;
         String data;
         char endDelimter = END_DELIMITER;
         // Constructor for easy packet creation
@@ -96,27 +94,37 @@ protected:
         uid[UID_LENGTH] = '\0';
         return String(uid);
     }
+    String read_string_from_eeprom(uint16_t start_address)
+    {
+        String string;
+        for (int i = 0; string[i] != '\0'; i++)
+            string[i] = EEPROM[start_address + i];
+
+        return string;
+    }
+
+    void write_string_to_eeprom(uint16_t start_address, String string)
+    {
+        for (int i = 0; i < string.length(); i++)
+            EEPROM[start_address + i] = string[i];
+        EEPROM[start_address + string.length()] = '\0';
+    }
+
+    void printPacket(Packet &p)
+    {
+        Serial.print("SOURCE:\t");
+        Serial.println(p.sourceAddress);
+        Serial.print("DESTIN:\t");
+        Serial.println(p.destinationAddress);
+        Serial.print("HEADER:\t");
+        Serial.println(p.operationHeader);
+        Serial.print("DATA:\t");
+        Serial.println(p.data);
+    }
 
 public:
-
     Node();
     int receivePacket();
 };
-
-String read_string_from_eeprom(uint16_t start_address)
-{
-    String string;
-    for (int i = 0; string[i] != '\0'; i++)
-        string[i] = EEPROM[start_address + i];
-
-    return string;
-}
-
-void write_string_to_eeprom(uint16_t start_address, String string)
-{
-    for (int i = 0; i < string.length(); i++)
-        EEPROM[start_address + i] = string[i];
-    EEPROM[start_address + string.length()] = '\0';
-}
 
 #endif // NODE_HPP

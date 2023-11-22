@@ -2,7 +2,6 @@
 #define MASTER_NODE_HPP
 
 #include "Node.hpp"
-#include "Node.cpp"
 
 class MasterNode : public Node
 {

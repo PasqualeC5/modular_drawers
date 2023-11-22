@@ -14,7 +14,7 @@ void loop()
     if (millis() - start >= 5000)
     {
         masterNode.hello();
-        start = millis()
+        start = millis();
     }
 }
 

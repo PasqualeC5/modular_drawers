@@ -1,11 +1,10 @@
 #include "Node.hpp"
-#include "Arduino.h"
-#include "eeprom.h"
 
 Node::Node()
 {
+    Serial.flush();
 
-    if (EEPROM[UID_ISSET_ADDRESS] == B00000001)
+    if (EEPROM[UID_ISSET_ADDRESS] == B00000001 || false)
     {
         address = EEPROM[UID_ADDRESS];
         uidSet = true;
@@ -24,20 +23,16 @@ void Node::discoverNetwork()
     uid = generateUID();
     Packet packet(address, BROADCAST_ADDRESS, DISCOVERY_HEADER, uid);
     sendPacket(packet);
+    printPacket(packet);
 }
 
 int Node::receivePacket()
 {
-
-    if (Serial.read() != START_DELIMITER)
-    {
-        // Serial.flush();
-        return BAD_PACKET_ERROR;
-    }
-
+    if (Serial.read() != (byte)START_DELIMITER)
+        return -1;
     byte src = Serial.read();
     byte dest = Serial.read();
-    byte header = Serial.read();
+    char header = Serial.read();
     String data = Serial.readStringUntil(END_DELIMITER);
 
     Packet packet(src, dest, header, data);
@@ -45,13 +40,20 @@ int Node::receivePacket()
     if (dest == address || dest == BROADCAST_ADDRESS)
         return processPacket(packet);
     else
+    {
         // Pacchetto non è mio quindi lo passo al prossimo nodo nella rete
         return sendPacket(packet);
+    }
 }
 
 int Node::processPacket(Packet &packet)
 {
+    Serial.println("PROCESSING PACKET");
     char header = packet.operationHeader;
+
+    printPacket(packet);
+    Serial.println("---------------------");
+
     // In base all'header scegli che operazione eseguire
     switch (header)
     {
@@ -77,16 +79,22 @@ int Node::processPacket(Packet &packet)
 
 int Node::handleDiscovery(Packet &packet)
 {
-    if (packet.data != uid)
+    Serial.println("HANDLING DISCOVERY");
+    printPacket(packet);
+    if (packet.data.substring(0, 4) != uid)
     {
         return sendPacket(packet);
     }
-    address = packet.data[0];
+    address = (byte)packet.data[0];
 
-    EEPROM[UID_ISSET_ADDRESS] = B00000001;
-    EEPROM[UID_ADDRESS] = address;
-    uidSet = true;
+    // EEPROM[UID_ISSET_ADDRESS] = B00000001;
+    // EEPROM[UID_ADDRESS] = address;
+    // uidSet = true;
     status = CONNECTED;
+    Serial.print("Address assigned:\t");
+    Serial.print(address);
+    Serial.println("CONNECTED");
+
     return status;
 }
 
@@ -99,6 +107,7 @@ int Node::handleStatus(Packet &packet)
 
 int Node::handleHello(Packet &packet)
 {
+    Serial.println("HANDLING HELLO");
     if (packet.sourceAddress == address)
     {
         Serial.println("--------------------------------");
