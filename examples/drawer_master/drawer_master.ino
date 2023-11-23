@@ -3,22 +3,19 @@
 
 MasterNode masterNode;
 long int start = 0;
+
 void setup()
 {
     Serial.begin(BAUD_RATE);
     masterNode = MasterNode();
+    masterNode.begin();
 }
 
 void loop()
 {
     if (millis() - start >= 5000)
     {
-        masterNode.hello();
-        start = millis();
+        masterNode.printConnectedDevicesStatus();
     }
-}
-
-void serialEvent()
-{
-    masterNode.receivePacket();
+    masterNode.update();
 }

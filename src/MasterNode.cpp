@@ -1,73 +1,123 @@
 #include "MasterNode.hpp"
+#include "Node.hpp"
 
 MasterNode::MasterNode() : Node()
 {
     address = MASTER_ADDRESS;
-    if (EEPROM[UID_ISSET_ADDRESS] == B00000001 || false)
+    for (int i = 0; i < MAX_DEVICES; i++)
     {
-        addresses = read_string_from_eeprom(UID_ADDRESS);
-        areAddressesStored = true;
+        addresses[i] = DEFAULT_ADDRESS;
     }
-    else
+    connectedDevices = 0;
+    unsigned long start = millis();
+    scanDevicesTimer = start;
+    scanNewDevicesTimer = start;
+}
+
+void MasterNode::update()
+{
+    scanForNewDevices();
+    scanConnectedDevices();
+}
+
+void MasterNode::scanForNewDevices()
+{
+    if (millis() - scanNewDevicesTimer < SCAN_NEW_DEVICES_PERIOD_MS)
+        return;
+    scanNewDevicesTimer = millis();
+    Serial.println("SCANNING FOR NEW DEVICES");
+    int error;
+    do
     {
-        areAddressesStored = false;
-        addresses = "";
+        Wire.beginTransmission(DEFAULT_ADDRESS);
+        delay(5);
+        error = Wire.endTransmission();
+        if (error == 0)
+        {
+            // New device found
+            Serial.println("NEW DEVICE FOUND");
+            Wire.beginTransmission(DEFAULT_ADDRESS);
+            Wire.write(ASSIGN_ADDRESS);
+            uint8_t assignedAddress = getAvailableAddress();
+            Wire.write(assignedAddress);
+            if (Wire.endTransmission() == 0)
+                addresses[assignedAddress - 1] = assignedAddress;
+            connectedDevices++;
+            delay(50);
+        }
+        delay(10);
+    } while (error == 0);
+}
+
+void MasterNode::scanConnectedDevices()
+{
+    if (millis() - scanDevicesTimer < SCAN_CONNECTED_DEVICES_PERIOD_MS)
+        return;
+    scanDevicesTimer = millis();
+    Serial.println("SCANNING CONNECTED DEVICES");
+    for (int i = 0; i < MAX_DEVICES; i++)
+    {
+        if (addresses[i] == DEFAULT_ADDRESS)
+            continue;
+        Wire.beginTransmission(addresses[i]);
+        if (Wire.endTransmission() != 0)
+        {
+            Serial.print("DEVICE NOT RESPONDING AT ADDRESS:\t");
+            Serial.println(addresses[i]);
+            // device not responding
+            // free address space
+            addresses[i] = DEFAULT_ADDRESS;
+            connectedDevices--;
+        }
+        else
+        {
+            Serial.print("DEVICE FOUND AT ADDRESS:\t");
+            Serial.println(addresses[i]);
+        }
     }
 }
 
-int MasterNode::handleDiscovery(Packet &packet)
+void MasterNode::printConnectedDevicesStatus()
 {
-    // New device added to network and given a unique address
-    byte givenAddress = ++totalDevices;
-
-    // addresses =
-    //     addresses.substring(0, (givenAddress - 1) * 2) +
-    //     packet.data + String((char)CONNECTED) +
-    //     addresses.substring(givenAddress * 2, addresses.length());
-    // write_string_to_eeprom(UID_ADDRESS + (givenAddress - 1) * 2, packet.data + String((char)CONNECTED));
-
-    packet.destinationAddress = packet.sourceAddress;
-    packet.sourceAddress = address;
-    packet.operationHeader = DISCOVERY_HEADER;
-    packet.data = packet.data + String((char)givenAddress);
-
-    sendPacket(packet);
-    Serial.println("NEW DISCOVERY REQUEST");
-    Serial.print("TOTAL DEVICES:\t");
-    Serial.println(totalDevices);
-    printPacket(packet);
-}
-
-int MasterNode::handleHello(Packet &packet)
-{
-    if (packet.sourceAddress == address)
+    for (int i = 0; i < MAX_DEVICES; i++)
     {
-        Serial.println("--------------------------------");
-        printPacket(packet);
-        Serial.println("--------------------------------");
-        return 0;
+        if (addresses[i] == DEFAULT_ADDRESS)
+            continue;
+        Serial.println("REQUESTING DATA");
+        Wire.requestFrom(addresses[i], DATA_SIZE);
+        uint8_t dataIndex = 0;
+        while (Wire.available() && dataIndex < DATA_SIZE)
+            data[dataIndex++] = Wire.read();
+
+        if (dataIndex == DATA_SIZE)
+        {
+            Serial.println("----DEVICE----");
+            Serial.print("Address:\t");
+            Serial.println(data[0]);
+            Serial.print("Connection:\t");
+            Serial.println((char)data[1]);
+            Serial.print("Status:\t");
+            Serial.println((char)data[2]);
+            Serial.print("LastOp:\t");
+            Serial.println((char)data[3]);
+            Serial.println("--------------");
+        }
     }
-    int len = packet.data.length();
-    packet.data = String(packet.data + "Hello from master: " + address + "\n");
-    return packet.data.length() - len;
 }
 
-int MasterNode::handleStatus(Packet &packet)
+void MasterNode::operateOnDevice(uint8_t deviceAddress, uint8_t deviceOperation)
 {
-    int status = packet.data[0];
-    byte src = packet.sourceAddress;
-    addresses =
-        addresses.substring(0, (src - 1) * 2) +
-        packet.data + String((char)CONNECTED) +
-        addresses.substring(src * 2, addresses.length());
-    // write_string_to_eeprom(UID_ADDRESS + (src - 1) * 2, packet.data + String((char)status));
+    Wire.beginTransmission(deviceAddress);
+    Wire.write(deviceOperation);
+    Wire.endTransmission();
 }
 
-void MasterNode::hello()
+uint8_t MasterNode::getAvailableAddress()
 {
-    if (totalDevices > 0)
-    {
-        Packet p(MASTER_ADDRESS, BROADCAST_ADDRESS, HELLO_HEADER, "");
-        sendPacket(p);
-    }
+    uint8_t i = 0;
+    while (i < MAX_DEVICES && addresses[i] != DEFAULT_ADDRESS)
+        i++;
+    if (i == MAX_DEVICES)
+        return DEFAULT_ADDRESS;
+    return i + 1;
 }
