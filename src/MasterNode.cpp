@@ -1,60 +1,122 @@
 #include "MasterNode.hpp"
-#include "Node.hpp"
 
-MasterNode::MasterNode() : Node()
+const int MAX_STRINGS = 10; // Maximum number of substrings
+uint8_t onConnectMessage[256];
+int splitString(String input, char delimiter, String result[])
 {
-    address = MASTER_ADDRESS;
+    int start = 0;
+    int length = input.length();
+    int count = 0;
+
+    for (int i = 0; i < length; i++)
+    {
+        if (input[i] == delimiter || i == length - 1)
+        {   
+            // Extract substring from start to i
+            result[count] = input.substring(start, (i == length - 1) ? (i + 1) : i);
+            count++;
+
+            // Update start index for the next substring
+            start = i + 1;
+        }
+    }
+
+    return count;
+}
+
+void MasterNode::setupForwardPin()
+{
+    pinMode(forwardPin, OUTPUT);
+    digitalWrite(forwardPin, LOW);
+}
+
+MasterNode::MasterNode(unsigned int fPin)
+{
+    forwardPin = fPin;
+}
+
+void MasterNode::begin()
+{
     for (int i = 0; i < MAX_DEVICES; i++)
     {
         addresses[i] = DEFAULT_ADDRESS;
     }
-    connectedDevices = 0;
     unsigned long start = millis();
     scanDevicesTimer = start;
     scanNewDevicesTimer = start;
+    checkDevicesStatusTimer = start;
+    setupForwardPin();
+    Wire.begin();
+    digitalWrite(forwardPin, HIGH);
 }
 
 void MasterNode::update()
 {
     scanForNewDevices();
     scanConnectedDevices();
+    checkConnectedDevicesStatus();
+    updateStatusLed();
 }
 
 void MasterNode::scanForNewDevices()
 {
+
     if (millis() - scanNewDevicesTimer < SCAN_NEW_DEVICES_PERIOD_MS)
         return;
+    int index = 0;
     scanNewDevicesTimer = millis();
-    Serial.println("SCANNING FOR NEW DEVICES");
     int error;
-    do
+
+    Wire.beginTransmission(DEFAULT_ADDRESS);
+    delay(100);
+    error = Wire.endTransmission();
+    if (error == 0)
     {
-        Wire.beginTransmission(DEFAULT_ADDRESS);
-        delay(5);
-        error = Wire.endTransmission();
-        if (error == 0)
+        // New device found
+        Serial.println("---New slave found---");
+        delay(100);
+        uint8_t availableAddress = getAvailableAddress();
+        if (availableAddress == DEFAULT_ADDRESS)
         {
-            // New device found
-            Serial.println("NEW DEVICE FOUND");
-            Wire.beginTransmission(DEFAULT_ADDRESS);
-            Wire.write(ASSIGN_ADDRESS);
-            uint8_t assignedAddress = getAvailableAddress();
-            Wire.write(assignedAddress);
-            if (Wire.endTransmission() == 0)
-                addresses[assignedAddress - 1] = assignedAddress;
-            connectedDevices++;
-            delay(50);
+            Serial.println("MAX NUMBER OF DEVICES CONNECTED");
+            return;
         }
-        delay(10);
-    } while (error == 0);
+        operateOnDevice(DEFAULT_ADDRESS, "AssignAddress", &availableAddress, 1);
+
+        Serial.println("---Slave connected---");
+        Serial.print("Assigned address:\t");
+        Serial.println(availableAddress);
+        delay(50);
+        Wire.requestFrom(availableAddress, (uint8_t)64);
+
+        index = 0;
+        uint8_t byteReceived;
+        while (Wire.available() && byteReceived != TERMINATION_CHARACTER)
+        {
+            byteReceived = Wire.read();
+            onConnectMessage[index++] = byteReceived;
+        }
+
+        onConnectMessage[index - 1] = '\0';
+
+        Serial.println((char *)onConnectMessage);
+        String subStrings[MAX_STRINGS];
+        int count = splitString(String((char *)onConnectMessage), SEPARATION_CHARACTER, subStrings);
+        if (_onConnect && count > 1)
+        {
+            _onConnect(availableAddress, subStrings[0], subStrings[1]);
+        }
+
+        addresses[availableAddress - 1] = availableAddress;
+    }
 }
 
 void MasterNode::scanConnectedDevices()
 {
+    int index = 0;
     if (millis() - scanDevicesTimer < SCAN_CONNECTED_DEVICES_PERIOD_MS)
         return;
     scanDevicesTimer = millis();
-    Serial.println("SCANNING CONNECTED DEVICES");
     for (int i = 0; i < MAX_DEVICES; i++)
     {
         if (addresses[i] == DEFAULT_ADDRESS)
@@ -62,53 +124,67 @@ void MasterNode::scanConnectedDevices()
         Wire.beginTransmission(addresses[i]);
         if (Wire.endTransmission() != 0)
         {
-            Serial.print("DEVICE NOT RESPONDING AT ADDRESS:\t");
-            Serial.println(addresses[i]);
-            // device not responding
-            // free address space
+            if (_onDisconnect)
+            {
+                _onDisconnect(addresses[i], String(), "Disconnect");
+            }
             addresses[i] = DEFAULT_ADDRESS;
-            connectedDevices--;
-        }
-        else
-        {
-            Serial.print("DEVICE FOUND AT ADDRESS:\t");
-            Serial.println(addresses[i]);
         }
     }
 }
 
-void MasterNode::printConnectedDevicesStatus()
+void MasterNode::checkConnectedDevicesStatus()
 {
+    int index = 0;
+
+    if (millis() - checkDevicesStatusTimer < PRINT_CONNECTED_DEVICES_STATUS_PERIOD_MS)
+        return;
+    checkDevicesStatusTimer = millis();
     for (int i = 0; i < MAX_DEVICES; i++)
     {
         if (addresses[i] == DEFAULT_ADDRESS)
             continue;
-        Serial.println("REQUESTING DATA");
-        Wire.requestFrom(addresses[i], DATA_SIZE);
-        uint8_t dataIndex = 0;
-        while (Wire.available() && dataIndex < DATA_SIZE)
-            data[dataIndex++] = Wire.read();
+        Wire.requestFrom((uint8_t)addresses[i], (uint8_t)0x7F);
+        delay(50);
 
-        if (dataIndex == DATA_SIZE)
+        index = 0;
+        uint8_t byteReceived;
+        while (Wire.available() && byteReceived != TERMINATION_CHARACTER)
         {
-            Serial.println("----DEVICE----");
-            Serial.print("Address:\t");
-            Serial.println(data[0]);
-            Serial.print("Connection:\t");
-            Serial.println((char)data[1]);
-            Serial.print("Status:\t");
-            Serial.println((char)data[2]);
-            Serial.print("LastOp:\t");
-            Serial.println((char)data[3]);
-            Serial.println("--------------");
+            byteReceived = Wire.read();
+            onConnectMessage[index++] = byteReceived;
+        }
+
+        onConnectMessage[index - 1] = '\0';
+        String subStrings[MAX_STRINGS];
+        int count = splitString(String((char *)onConnectMessage), SEPARATION_CHARACTER, subStrings);
+
+        if (_onUpdate && count > 1)
+        {
+            _onUpdate(addresses[i], subStrings[0], subStrings[1]);
         }
     }
 }
 
-void MasterNode::operateOnDevice(uint8_t deviceAddress, uint8_t deviceOperation)
+void MasterNode::operateOnDevice(uint8_t deviceAddress, const char *deviceOperation, uint8_t *operationParameters, uint8_t nParameters)
 {
+    Serial.print("Transmitting to:\t");
+    Serial.println(deviceAddress);
+    Serial.print("Operation:\t");
+    Serial.println(deviceOperation);
+    Serial.print("Parameters:\t[");
+
+    for (int i = 0; i < nParameters; i++)
+    {
+        Serial.print(operationParameters[i]);
+        Serial.print(", ");
+    }
+    Serial.println("]");
+
     Wire.beginTransmission(deviceAddress);
-    Wire.write(deviceOperation);
+    Wire.write((const uint8_t *)deviceOperation, strlen(deviceOperation));
+    Wire.write(SEPARATION_CHARACTER);
+    Wire.write(operationParameters, nParameters);
     Wire.endTransmission();
 }
 
@@ -120,4 +196,8 @@ uint8_t MasterNode::getAvailableAddress()
     if (i == MAX_DEVICES)
         return DEFAULT_ADDRESS;
     return i + 1;
+}
+
+void MasterNode::updateStatusLed()
+{
 }
