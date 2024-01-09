@@ -1,28 +1,5 @@
 #include "MasterNode.hpp"
-
-const int MAX_STRINGS = 10; // Maximum number of substrings
-uint8_t onConnectMessage[256];
-int splitString(String input, char delimiter, String result[])
-{
-    int start = 0;
-    int length = input.length();
-    int count = 0;
-
-    for (int i = 0; i < length; i++)
-    {
-        if (input[i] == delimiter || i == length - 1)
-        {   
-            // Extract substring from start to i
-            result[count] = input.substring(start, (i == length - 1) ? (i + 1) : i);
-            count++;
-
-            // Update start index for the next substring
-            start = i + 1;
-        }
-    }
-
-    return count;
-}
+#include "SimpleMap.hpp"
 
 void MasterNode::setupForwardPin()
 {
@@ -81,30 +58,42 @@ void MasterNode::scanForNewDevices()
             Serial.println("MAX NUMBER OF DEVICES CONNECTED");
             return;
         }
-        operateOnDevice(DEFAULT_ADDRESS, "AssignAddress", &availableAddress, 1);
+        // operateOnDevice(DEFAULT_ADDRESS, "AssignAddress", &availableAddress, 1);
+        const int capacity = JSON_OBJECT_SIZE(2) + JSON_OBJECT_SIZE(3);
+        DynamicJsonDocument jsonDoc(capacity);
+        jsonDoc["operation"] = String("AssignAddress");
+        JsonObject parameters = jsonDoc.createNestedObject("parameters");
+        parameters["address"] = availableAddress;
+        String jsonString;
+        serializeJson(jsonDoc, jsonString);
+        jsonDoc.clear();
+
+        sendJson(DEFAULT_ADDRESS, jsonString);
 
         Serial.println("---Slave connected---");
         Serial.print("Assigned address:\t");
         Serial.println(availableAddress);
         delay(50);
-        Wire.requestFrom(availableAddress, (uint8_t)64);
 
-        index = 0;
-        uint8_t byteReceived;
-        while (Wire.available() && byteReceived != TERMINATION_CHARACTER)
+        if (_onConnect)
         {
-            byteReceived = Wire.read();
-            onConnectMessage[index++] = byteReceived;
-        }
-
-        onConnectMessage[index - 1] = '\0';
-
-        Serial.println((char *)onConnectMessage);
-        String subStrings[MAX_STRINGS];
-        int count = splitString(String((char *)onConnectMessage), SEPARATION_CHARACTER, subStrings);
-        if (_onConnect && count > 1)
-        {
-            _onConnect(availableAddress, subStrings[0], subStrings[1]);
+            String receivedMessage = "";
+            while (!isJsonComplete(receivedMessage))
+            {
+                Wire.requestFrom(availableAddress, (uint8_t)32);
+                uint8_t receivedByte = 0;
+                while (Wire.available() && receivedByte != TERMINATION_CHARACTER)
+                {
+                    receivedByte = Wire.read();
+                    receivedMessage += (char)receivedByte;
+                }
+            }
+            receivedMessage[receivedMessage.length()-1] = '\0';
+            jsonDoc = DynamicJsonDocument(256);
+            Serial.println(receivedMessage);
+            deserializeJson(jsonDoc, receivedMessage.c_str());
+            _onConnect(jsonDoc.as<JsonObject>());
+            jsonDoc.clear();
         }
 
         addresses[availableAddress - 1] = availableAddress;
@@ -126,8 +115,13 @@ void MasterNode::scanConnectedDevices()
         {
             if (_onDisconnect)
             {
-                _onDisconnect(addresses[i], String(), "Disconnect");
+                DynamicJsonDocument jsonDoc(256);
+                jsonDoc["address"] = addresses[i];
+                jsonDoc["last_operation"] = String("Disconnect");
+                _onDisconnect(jsonDoc.as<JsonObject>());
+                jsonDoc.clear();
             }
+
             addresses[i] = DEFAULT_ADDRESS;
         }
     }
@@ -142,50 +136,47 @@ void MasterNode::checkConnectedDevicesStatus()
     checkDevicesStatusTimer = millis();
     for (int i = 0; i < MAX_DEVICES; i++)
     {
+
         if (addresses[i] == DEFAULT_ADDRESS)
             continue;
-        Wire.requestFrom((uint8_t)addresses[i], (uint8_t)0x7F);
-        delay(50);
 
-        index = 0;
-        uint8_t byteReceived;
-        while (Wire.available() && byteReceived != TERMINATION_CHARACTER)
+        if (_onUpdate)
         {
-            byteReceived = Wire.read();
-            onConnectMessage[index++] = byteReceived;
-        }
+            DynamicJsonDocument jsonDoc(256);
+            String receivedMessage = "";
+            while (!isJsonComplete(receivedMessage))
+            {
+                Wire.requestFrom(addresses[i], (uint8_t)32);
+                uint8_t receivedByte = 0;
+                while (Wire.available() && receivedByte != TERMINATION_CHARACTER)
+                {
+                    receivedByte = Wire.read();
+                    receivedMessage += (char)receivedByte;
+                }
+            }
+            receivedMessage[receivedMessage.length()-1] = '\0';
+            jsonDoc = DynamicJsonDocument(256);
+            deserializeJson(jsonDoc, receivedMessage.c_str());
 
-        onConnectMessage[index - 1] = '\0';
-        String subStrings[MAX_STRINGS];
-        int count = splitString(String((char *)onConnectMessage), SEPARATION_CHARACTER, subStrings);
+            _onUpdate(jsonDoc.as<JsonObject>());
 
-        if (_onUpdate && count > 1)
-        {
-            _onUpdate(addresses[i], subStrings[0], subStrings[1]);
+            jsonDoc.clear();
         }
     }
 }
 
-void MasterNode::operateOnDevice(uint8_t deviceAddress, const char *deviceOperation, uint8_t *operationParameters, uint8_t nParameters)
+void MasterNode::sendJson(uint8_t deviceAddress, String jsonString)
 {
-    Serial.print("Transmitting to:\t");
-    Serial.println(deviceAddress);
-    Serial.print("Operation:\t");
-    Serial.println(deviceOperation);
-    Serial.print("Parameters:\t[");
+    Serial.print("Json string length: ");
+    Serial.println(jsonString.length());
+    Serial.println(jsonString);
 
-    for (int i = 0; i < nParameters; i++)
+    int strLength = jsonString.length();
+    for (int i = 0; i < strLength; i += maxChunkSize)
     {
-        Serial.print(operationParameters[i]);
-        Serial.print(", ");
+        sendChunk(jsonString.substring(i, i + maxChunkSize), deviceAddress);
+        delay(100); // Delay to ensure proper transmission, adjust as needed
     }
-    Serial.println("]");
-
-    Wire.beginTransmission(deviceAddress);
-    Wire.write((const uint8_t *)deviceOperation, strlen(deviceOperation));
-    Wire.write(SEPARATION_CHARACTER);
-    Wire.write(operationParameters, nParameters);
-    Wire.endTransmission();
 }
 
 uint8_t MasterNode::getAvailableAddress()

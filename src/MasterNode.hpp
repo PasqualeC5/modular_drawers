@@ -9,13 +9,21 @@
 #define PRINT_CONNECTED_DEVICES_STATUS_PERIOD_MS 2000
 #define PRINT_STATUS false
 
+
 class MasterNode : public Node
 {
 
 private:
-    OnSlaveUpdate _onDisconnect;
-    OnSlaveUpdate _onConnect;
-    OnSlaveUpdate _onUpdate;
+    CallbackFunctionJson _onDisconnect;
+    CallbackFunctionJson _onConnect;
+    CallbackFunctionJson _onUpdate;
+
+    void sendChunk(String chunk, uint8_t deviceAddress)
+    {
+        Wire.beginTransmission(deviceAddress);
+        Wire.write((uint8_t *)chunk.c_str(), chunk.length());
+        Wire.endTransmission();
+    }
 
 protected:
     unsigned int forwardPin;
@@ -32,15 +40,15 @@ protected:
     void setupForwardPin();
 
 public:
-    void onConnect(OnSlaveUpdate callback)
+    void onConnect(CallbackFunctionJson callback)
     {
         _onConnect = callback;
     }
-    void onDisconnect(OnSlaveUpdate callback)
+    void onDisconnect(CallbackFunctionJson callback)
     {
         _onDisconnect = callback;
     }
-    void onUpdate(OnSlaveUpdate callback)
+    void onUpdate(CallbackFunctionJson callback)
     {
         _onUpdate = callback;
     }
@@ -57,7 +65,7 @@ public:
     MasterNode(unsigned int forwardPin);
     void update();
     void begin();
-    void operateOnDevice(uint8_t deviceAddress, const char *deviceOperation, uint8_t *operationParameters, uint8_t nParameters);
+    void sendJson(uint8_t deviceAddress, String jsonString);
     void checkConnectedDevicesStatus();
 };
 

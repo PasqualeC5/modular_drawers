@@ -1,20 +1,31 @@
 #include <MasterNode.hpp>
 
+
 MasterNode masterNode(2);
 uint8_t connectedAddresses[MAX_DEVICES];
-uint8_t *params;
+uint8_t* params;
 int n = 0;
 unsigned long timer = millis();
 
-void onUpdate(uint8_t *parameters, unsigned int nParameters) {
-  for (int i = 0; i < nParameters; i++) {
-    Serial.print((char)parameters[i]);
-  }
-  Serial.println();
+void onUpdate(JsonObject data) {
+  Serial.println("Update");
+  uint8_t address = data["address"];
+  const char* serial_id = data["serial_id"];
+  const char* last_operation = data["last_operation"];
+  Serial.println(address);
+  Serial.println(serial_id);
+  Serial.println(last_operation);
 }
 
-void onConnect(uint8_t *parameters, unsigned int nParameters) {
-  Serial.println("Slave connected callback");
+
+void onConnect(JsonObject data) {
+  Serial.println("Connect");
+  uint8_t address = data["address"];
+  const char* serial_id = data["serial_id"];
+  const char* last_operation = data["last_operation"];
+  Serial.println(address);
+  Serial.println(serial_id);
+  Serial.println(last_operation);
 }
 
 void setup() {
@@ -26,16 +37,20 @@ void setup() {
 
 void loop() {
   n = masterNode.getAddresses(connectedAddresses);
-  if (millis() - timer >= 10000) {
+  if (millis() - timer >= 3000) {
     for (int i = 0; i < n; i++) {
-      uint8_t numberOfRevs = 1;
-      uint8_t speed = 15;
-      masterNode.operateOnDevice(connectedAddresses[i], "SetSpeed", &speed, 1);
-      masterNode.operateOnDevice(connectedAddresses[i], "OpenDrawer", &numberOfRevs, 1);
-      delay(1000);
-      masterNode.operateOnDevice(connectedAddresses[i], "StopDrawer", NULL, 0);
-      masterNode.operateOnDevice(connectedAddresses[i], "CloseDrawer", &numberOfRevs, 1);
-
+      const int capacity = JSON_OBJECT_SIZE(2) + JSON_OBJECT_SIZE(2);
+      Serial.print("Capacity: ");
+      Serial.println(capacity);
+      DynamicJsonDocument jsonDoc(capacity);
+      jsonDoc["operation"] = "Hello";
+      JsonObject parameters = jsonDoc.createNestedObject("parameters");
+      parameters["message"] = "World";
+      parameters["data"] = 0;
+      String jsonString;
+      serializeJson(jsonDoc, jsonString);
+      jsonDoc.clear();
+      masterNode.sendJson(connectedAddresses[i], jsonString);
     }
     timer = millis();
   }

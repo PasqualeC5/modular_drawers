@@ -5,7 +5,7 @@
 
 
 
-void addOperation(String operationName, CallbackFunctionByteArray function);
+void addOperation(String operationName, CallbackFunctionJson function);
 
 class SlaveNode : public Node
 {

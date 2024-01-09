@@ -3,7 +3,11 @@
 // StepperAsync5 *stepper;
 // const int stepsPerRevolution = 2038;
 
-SimpleMap<String, CallbackFunctionByteArray> operations;
+SimpleMap<String, CallbackFunctionJson> operations;
+String receivedData = "";
+String requestedData = "";
+int requestedDataPosition = 0;
+
 
 const char *serialId;
 String lastOperation;
@@ -17,10 +21,10 @@ bool isEnabled()
     return digitalRead(enabledPin);
 }
 
-void assignAddress(uint8_t *parameters, unsigned int nParameters = 1)
+void assignAddress(JsonObject parameters)
 {
     Serial.println("---Address received---");
-    address = parameters[0];
+    address = parameters["address"];
     Wire.end();
     Wire.begin(address);
     Serial.print("address:\t");
@@ -28,7 +32,7 @@ void assignAddress(uint8_t *parameters, unsigned int nParameters = 1)
     digitalWrite(forwardPin, HIGH);
 }
 
-void addOperation(String operationName, CallbackFunctionByteArray function)
+void addOperation(String operationName, CallbackFunctionJson function)
 {
     // operations.insert(std::pair<String, CallbackFunctionByteArray>(operationName, function));
     operations[operationName] = function;
@@ -36,13 +40,13 @@ void addOperation(String operationName, CallbackFunctionByteArray function)
     Serial.println(operationName);
 }
 
-void executeOperation(const char *operationName, uint8_t *parameters, unsigned int nParameters)
+void executeOperation(const char *operationName, JsonObject parameters)
 {
 
     if (operations.find(operationName))
     {
         lastOperation = String(operationName);
-        operations[operationName](parameters, nParameters);
+        operations[operationName](parameters);
     }
     else
     {
@@ -53,40 +57,71 @@ void executeOperation(const char *operationName, uint8_t *parameters, unsigned i
     }
 }
 
+void processJson(String jsonString)
+{
+    Serial.println("Processing json");
+    Serial.println(jsonString);
+    // Parse the JSON string into a JSON object
+    DynamicJsonDocument jsonDoc(256); // Adjust the size based on your JSON structure
+    DeserializationError error = deserializeJson(jsonDoc, jsonString);
+
+    // Check for parsing errors
+    if (error)
+    {
+        Serial.print("Error parsing JSON: ");
+        Serial.println(error.c_str());
+        return;
+    }
+    JsonObject jsonObject = jsonDoc.as<JsonObject>();
+
+    const char *operation = jsonObject["operation"];
+    JsonObject parameters = jsonObject["parameters"].as<JsonObject>();
+    executeOperation(operation, parameters);
+    jsonDoc.clear();
+}
+
 void onReceive(int numBytes)
 {
-    String operation = "";
-    uint8_t parameters[128];
-    int nParameters = 0;
-    uint8_t receivedByte;
-    if (Wire.available())
+
+    // Read the incoming JSON chunk
+    while (Wire.available())
     {
-        receivedByte = Wire.read();
-        while (receivedByte != SEPARATION_CHARACTER && Wire.available())
-        {
-            operation += (char)receivedByte;
-            receivedByte = Wire.read();
-        }
+        char c = Wire.read();
+        receivedData += c;
+    }
 
-        if (receivedByte != SEPARATION_CHARACTER)
-            return;
-        while (Wire.available())
-        {
-            parameters[nParameters++] = Wire.read();
-        }
-
-        Serial.print("Received operation: ");
-        Serial.println(operation);
-        executeOperation(operation.c_str(), parameters, nParameters);
+    // Check if the end of the JSON string is reached
+    if (isJsonComplete(receivedData))
+    {
+        
+        // Complete JSON string received, process it
+        processJson(receivedData);
+        receivedData = ""; // Reset for the next transmission
     }
 }
 
 void onRequest()
 {
-    Wire.write((uint8_t *)serialId, strlen(serialId));
-    Wire.write(SEPARATION_CHARACTER);
-    Wire.write((uint8_t *)lastOperation.c_str(), lastOperation.length());
-    Wire.write(TERMINATION_CHARACTER);
+    if (requestedDataPosition == 0)
+    {
+        requestedData = "";
+        DynamicJsonDocument jsonDoc(256);
+        jsonDoc["address"] = address;
+        jsonDoc["serial_id"] = String(serialId);
+        jsonDoc["last_operation"] = lastOperation;
+
+        serializeJson(jsonDoc, requestedData);
+    }
+    String chunk = requestedData.substring(requestedDataPosition, requestedDataPosition + maxChunkSize);
+
+    requestedDataPosition += chunk.length();
+
+    Wire.write((uint8_t *)chunk.c_str(), chunk.length());
+    if (requestedDataPosition >= requestedData.length())
+    {
+        requestedDataPosition = 0;
+    }
+    delay(100);
 }
 
 SlaveNode::SlaveNode(const char *sid, unsigned int ledPin, unsigned int ePin, unsigned int fPin)

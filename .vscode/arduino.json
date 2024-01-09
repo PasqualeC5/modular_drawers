@@ -1,0 +1,4 @@
+{
+    "board": "arduino:avr:uno",
+    "sketch": "examples\\slave_node\\slave_node.ino"
+}
